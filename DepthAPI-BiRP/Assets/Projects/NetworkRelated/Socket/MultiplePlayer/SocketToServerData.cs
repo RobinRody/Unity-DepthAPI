@@ -113,38 +113,44 @@ namespace MultiPlayer {
         //    UpdateTimestamp();
         //}
 
-        public void UpdateData(Actor.Bone[] bones, bool rhValid, bool lhValid, float avatarScale)
+        public void UpdateData(Transform headTransform, bool rhValid, bool lhValid, float avatarScale)
         {
-            UpdateBoneTransforms(bones);
+            //UpdateBoneTransforms(bones);
+            bone_transforms.Add(new BoneTransformData(
+                "b_head",
+                headTransform.position,
+                headTransform.rotation
+            ));
             left_hand_available = lhValid;
             right_hand_available = rhValid;
             scale = avatarScale;
 
             UpdateTimestamp();
         }
-        //public void UpdateData(Actor.Bone[] bones, bool rhValid, bool lhValid)
+        //public void UpdateData(Actor.Bone[] bones, bool rhValid, bool lhValid, float avatarScale)
         //{
         //    UpdateBoneTransforms(bones);
         //    left_hand_available = lhValid;
         //    right_hand_available = rhValid;
-        //    //scale = avatarScale;
+        //    scale = avatarScale;
 
         //    UpdateTimestamp();
         //}
 
-        public void UpdateBoneTransforms(Actor.Bone[] bones)
-        {
-            bone_transforms.Clear();
-            foreach (var bone in bones)
-            {
-                var t = bone.GetTransform();
-                bone_transforms.Add(new BoneTransformData(
-                    bone.GetName(),
-                    t.position,
-                    t.rotation
-                ));
-            }
-        }
+        //public void UpdateBoneTransforms(Actor.Bone[] bones)
+        //{
+        //    bone_transforms.Clear();
+        //    foreach (var bone in bones)
+        //    {
+        //        var t = bone.GetTransform();
+        //        bone_transforms.Add(new BoneTransformData(
+        //            bone.GetName(),
+        //            t.position,
+        //            t.rotation
+        //        ));
+        //    }
+        //}
+
         public void UpdateBoneTransforms(string[] boneNames, Transform[] transforms)
         {
             if (boneNames.Length != transforms.Length)

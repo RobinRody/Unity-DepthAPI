@@ -13,6 +13,11 @@ using UnityEngine;
 namespace MultiPlayer {
     public class CoPlayerSocketMgr : MonoBehaviour {
         public static CoPlayerSocketMgr Instance { get; private set; }
+
+
+        [Header("Mode")]
+        public bool IsDepthBasedMode = true;
+
         [Header("ChapterManager")]
         public ChapterManager ChapterManager;
 
@@ -223,7 +228,10 @@ namespace MultiPlayer {
                         //    );
                         DealWithChapter();
                         //Debug.Log("<color=white>[Socket>Chapter]</color> Between DealWithChapter and AnimateOtherAvatars");
-                        ChapterManager.AnimateOtherAvatars(positionInfo, deviceShortID);
+                        if (!IsDepthBasedMode)
+                        {
+                            ChapterManager.AnimateOtherAvatars(positionInfo, deviceShortID);
+                        }
                         //Debug.Log("<color=white>[Socket>Chapter]</color> After AnimateOtherAvatars!!");
                     }
                     break;
@@ -234,25 +242,27 @@ namespace MultiPlayer {
         }
 
         void PassHeartbeat() {
-            //if (HMDObj == null)  //if (HMDObj == null || SpaceCalibrationMapper == null) {
-            //{
-            //    Debug.Log("<color=red>[CoPlayer Socket]</color> Please Set HMD Object.");
-            //    //    Debug.Log("<color=red>[CoPlayer Socket]</color> Please Set HMD Object or SpaceCalibrationMapper.");
-            //    return;
-            //}
-            if (Actor == null)  //if (HMDObj == null || SpaceCalibrationMapper == null) {
+            if (HMDObj == null)  //if (HMDObj == null || SpaceCalibrationMapper == null) {
             {
-                Debug.Log("<color=red>[CoPlayer Socket]</color> Please Set Actor Object.");
+                Debug.Log("<color=red>[CoPlayer Socket]</color> Please Set HMD Object.");
                 //    Debug.Log("<color=red>[CoPlayer Socket]</color> Please Set HMD Object or SpaceCalibrationMapper.");
                 return;
             }
+            //if (Actor == null)  //if (HMDObj == null || SpaceCalibrationMapper == null) {
+            //{
+            //    Debug.Log("<color=red>[CoPlayer Socket]</color> Please Set Actor Object.");
+            //    //    Debug.Log("<color=red>[CoPlayer Socket]</color> Please Set HMD Object or SpaceCalibrationMapper.");
+            //    return;
+            //}
 
-            //!!++ Added
-            if (Actor.Bones == null || Actor.Bones.Length == 0)
-            {
-                Debug.Log("<color=red>[CoPlayer Socket]</color> Actor.Bones is not initialized yet to send Heartbeat");
-                return;
-            }
+            ////!!++ Added
+            //if (Actor.Bones == null || Actor.Bones.Length == 0)
+            //{
+            //    Debug.Log("<color=red>[CoPlayer Socket]</color> Actor.Bones is not initialized yet to send Heartbeat");
+            //    return;R
+            //}
+
+
 
             //heartbeatPayload.heartbeat.UpdateData(
             //    SpaceCalibrationMapper.GetPositionInCoordinate(HMDObj.transform.position),
@@ -274,7 +284,8 @@ namespace MultiPlayer {
 
             //Debug.LogWarning("<color=white>[CoPlayer Socket]</color> to UpdateData!!!!");
             heartbeatPayload.heartbeat.UpdateData(
-                Actor.Bones, 
+                HMDObj.transform,
+                //Actor.Bones, 
                 (RightOVRHand.IsDataValid && RightOVRHand.IsTracked),
                 (LeftOVRHand.IsDataValid && LeftOVRHand.IsTracked),
                 1 //TS.GetScale()

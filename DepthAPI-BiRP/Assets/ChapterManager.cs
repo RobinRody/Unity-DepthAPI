@@ -13,6 +13,10 @@ namespace MultiPlayer
         //private string deviceShortID => CoPlayerSocketMgr.DeviceShortID;
         private string deviceshortID => CoPlayerSocketMgr.Instance?.DeviceShortID ?? "";
 
+
+        [Header("Mode")]
+        public bool IsDepthBasedMode = true;
+
         [Header("General UI Setting")]
         [Tooltip("should be false, only be true if want to show differen hint for Even/Odd JankenRound")]
         public bool setJankenEvenOddHint = false;
@@ -26,7 +30,7 @@ namespace MultiPlayer
         private OVRMeshRenderer ovrHandMeshLeft;
         private SkinnedMeshRenderer ovrHandSkinnedMeshRight;
         private SkinnedMeshRenderer ovrHandSkinnedMeshLeft;
-        [Header("AvatarSelf Color adjusted")]
+        //[Header("AvatarSelf Color adjusted")]
         //public AvatarScaler avatarScalerForColorChanging;
         [Header("UICircle")]
         public GameObject standbyCircleAndRoute;
@@ -197,8 +201,11 @@ namespace MultiPlayer
 
         private void FixedUpdate()
         {
-            // Check Other Players Timeout
-            CheckOtherPlayersTimeout();
+            if (!IsDepthBasedMode)
+            {
+                // Check Other Players Timeout
+                CheckOtherPlayersTimeout();
+            }
         }
 
         void Update()
@@ -337,14 +344,14 @@ namespace MultiPlayer
                         ShowPuzzleUI(true);
                         ShowPuzzleSubjectUI(true, Puzzle.puzzle_subject);
 
-                        ChangeOtherColor(false, "");
+                        //ChangeOtherColor(false, "");
                         //ChangeOtherColor(false, -1);
                         //avatarScalerForColorChanging.ChangeSelfColor(true);
                     }
                     // 3. or if puzzlePlayer is others, change the Player's color
                     else
                     {
-                        ChangeOtherColor(true, Puzzle.puzzle_player);
+                        //ChangeOtherColor(true, Puzzle.puzzle_player);
                         //avatarScalerForColorChanging.ChangeSelfColor(false);
 
                         ShowPuzzleSubjectUI(false, 0);
@@ -456,7 +463,7 @@ namespace MultiPlayer
         }
         private void ResetPuzzleUI()
         {
-            ChangeOtherColor(false, "");
+            //ChangeOtherColor(false, "");
             //ChangeOtherColor(false, -1);
             ShowPuzzleUI(false);
             ShowPuzzleSubjectUI(false, 0);
@@ -530,85 +537,85 @@ namespace MultiPlayer
         }
 
 
-        //!!*** Helper Functions: ChapterDisplay -- Puzzle: Avatar Color Changer ***!!
-        private void ChangeOtherColor(bool toChange, string deviceID)
-        {
-            // Reset all other players' color first
-            ResetOtherColorAll();
-            if (string.IsNullOrEmpty(deviceID)) return;
+        ////!!*** Helper Functions: ChapterDisplay -- Puzzle: Avatar Color Changer ***!!
+        //private void ChangeOtherColor(bool toChange, string deviceID)
+        //{
+        //    // Reset all other players' color first
+        //    ResetOtherColorAll();
+        //    if (string.IsNullOrEmpty(deviceID)) return;
 
-            // Then change the corresponding player's color
-            if (!otherPlayers.ContainsKey(deviceID))
-            {
-                Debug.LogWarning($"<color=red>[ChapterMgr]</color> Player {deviceID} not found in otherPlayers");
-                return;
-            }
+        //    // Then change the corresponding player's color
+        //    if (!otherPlayers.ContainsKey(deviceID))
+        //    {
+        //        Debug.LogWarning($"<color=red>[ChapterMgr]</color> Player {deviceID} not found in otherPlayers");
+        //        return;
+        //    }
 
-            GameObject playerObj = otherPlayers[deviceID];
-            if (playerObj == null)
-            {
-                Debug.LogWarning($"<color=red>[ChapterMgr]</color> Player {deviceID} GameObject is null");
-                return;
-            }
+        //    GameObject playerObj = otherPlayers[deviceID];
+        //    if (playerObj == null)
+        //    {
+        //        Debug.LogWarning($"<color=red>[ChapterMgr]</color> Player {deviceID} GameObject is null");
+        //        return;
+        //    }
 
-            SetPlayerColor(toChange, playerObj);
+        //    SetPlayerColor(toChange, playerObj);
             
-        }
-        private void ResetOtherColorAll()
-        {
-            foreach (var kvp in otherPlayers)
-            {
-                string deviceId = kvp.Key;
-                GameObject playerObj = kvp.Value;
-                if (playerObj == null)
-                {
-                    Debug.LogWarning($"<color=red>[ChapterMgr]</color> Player {deviceId} GameObject is null");
-                    continue;
-                }
-                SetPlayerColor(false, playerObj);
-            }
-        }
-        private void SetPlayerColor(bool highlight, GameObject playerObj)
-        {
-            // 顏色定義
-            //Color highlightColor = new Color(0.349f, 0.824f, 0.0f); // #59D200
-            //Color normalColor = new Color(0.263f, 0.263f, 0.263f);  // #434343
+        //}
+        //private void ResetOtherColorAll()
+        //{
+        //    foreach (var kvp in otherPlayers)
+        //    {
+        //        string deviceId = kvp.Key;
+        //        GameObject playerObj = kvp.Value;
+        //        if (playerObj == null)
+        //        {
+        //            Debug.LogWarning($"<color=red>[ChapterMgr]</color> Player {deviceId} GameObject is null");
+        //            continue;
+        //        }
+        //        SetPlayerColor(false, playerObj);
+        //    }
+        //}
+        //private void SetPlayerColor(bool highlight, GameObject playerObj)
+        //{
+        //    // 顏色定義
+        //    //Color highlightColor = new Color(0.349f, 0.824f, 0.0f); // #59D200
+        //    //Color normalColor = new Color(0.263f, 0.263f, 0.263f);  // #434343
 
-            Color targetColor = highlight ? highlightColor : normalColor;
+        //    Color targetColor = highlight ? highlightColor : normalColor;
 
-            // 方法 1：使用 SkinnedMeshRenderer（如果 Avatar 使用骨骼動畫）
-            SkinnedMeshRenderer skinnedRenderer = playerObj.GetComponentInChildren<SkinnedMeshRenderer>();
-            if (skinnedRenderer != null)
-            {
-                // 產生材質實例（避免影響 Prefab）
-                skinnedRenderer.material.color = targetColor;
-                Debug.Log($"<color=green>[ChapterMgr]</color> Changed SkinnedMeshRenderer color to {(highlight ? "highlight" : "normal")}");
-                return;
-            }
+        //    // 方法 1：使用 SkinnedMeshRenderer（如果 Avatar 使用骨骼動畫）
+        //    SkinnedMeshRenderer skinnedRenderer = playerObj.GetComponentInChildren<SkinnedMeshRenderer>();
+        //    if (skinnedRenderer != null)
+        //    {
+        //        // 產生材質實例（避免影響 Prefab）
+        //        skinnedRenderer.material.color = targetColor;
+        //        Debug.Log($"<color=green>[ChapterMgr]</color> Changed SkinnedMeshRenderer color to {(highlight ? "highlight" : "normal")}");
+        //        return;
+        //    }
 
-            // 方法 2：使用一般 Renderer（如果沒有骨骼動畫）
-            Renderer[] renderers = playerObj.GetComponentsInChildren<Renderer>();
-            if (renderers.Length > 0)
-            {
-                foreach (var renderer in renderers)
-                {
-                    renderer.material.color = targetColor;
-                }
-                Debug.Log($"<color=green>[ChapterMgr]</color> Changed {renderers.Length} Renderer(s) color to {(highlight ? "highlight" : "normal")}");
-                return;
-            }
+        //    // 方法 2：使用一般 Renderer（如果沒有骨骼動畫）
+        //    Renderer[] renderers = playerObj.GetComponentsInChildren<Renderer>();
+        //    if (renderers.Length > 0)
+        //    {
+        //        foreach (var renderer in renderers)
+        //        {
+        //            renderer.material.color = targetColor;
+        //        }
+        //        Debug.Log($"<color=green>[ChapterMgr]</color> Changed {renderers.Length} Renderer(s) color to {(highlight ? "highlight" : "normal")}");
+        //        return;
+        //    }
 
-            //// 方法 3：使用 Transparency 腳本（如果已經掛載）
-            //Transparency transparency = playerObj.GetComponent<Transparency>();
-            //if (transparency != null)
-            //{
-            //    transparency.SetTransparency(highlight ? 1.0f : 0.5f);
-            //    Debug.Log($"<color=green>[ChapterMgr]</color> Changed Transparency to {(highlight ? "1.0" : "0.5")}");
-            //    return;
-            //}
+        //    //// 方法 3：使用 Transparency 腳本（如果已經掛載）
+        //    //Transparency transparency = playerObj.GetComponent<Transparency>();
+        //    //if (transparency != null)
+        //    //{
+        //    //    transparency.SetTransparency(highlight ? 1.0f : 0.5f);
+        //    //    Debug.Log($"<color=green>[ChapterMgr]</color> Changed Transparency to {(highlight ? "1.0" : "0.5")}");
+        //    //    return;
+        //    //}
 
-            Debug.LogWarning($"<color=red>[ChapterMgr]</color> No Renderer found on player {playerObj.name}");
-        }
+        //    Debug.LogWarning($"<color=red>[ChapterMgr]</color> No Renderer found on player {playerObj.name}");
+        //}
 
 
         //!!*** Helper Functions: ChapterDisplay -- Janken ***!!
