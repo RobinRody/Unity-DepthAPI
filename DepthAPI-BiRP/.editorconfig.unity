@@ -1,0 +1,64 @@
+# ===== Unity 專用 EditorConfig 配置 =====
+# 請將此檔案內容複製到 .editorconfig 的對應位置
+
+# ===== 針對 Unity 項目調整的警告設置 =====
+
+[*.cs]
+
+# ===== 可以安全忽略的警告 =====
+
+# IDE0090: 使用 'new()' 簡化語法
+# 原因: Unity 項目中明確類型更清晰，且 C# 7.3 不完全支援
+dotnet_diagnostic.IDE0090.severity = none
+csharp_style_implicit_object_creation_when_type_is_apparent = false
+
+# IDE1006: 命名規則
+# 原因: Unity 常用下劃線前綴 (_field) 而非 m_ 前綴
+dotnet_diagnostic.IDE1006.severity = suggestion
+
+# CS0649: 從未指派欄位
+# 原因: Unity Inspector 會透過序列化注入值
+dotnet_diagnostic.CS0649.severity = none
+
+# IDE0051: 未使用的私有成員
+# 原因: Unity 的 Awake, Start, Update 等會被反射調用
+dotnet_diagnostic.IDE0051.severity = none
+
+# CS0414: 欄位已指派但從未使用
+# 原因: [SerializeField] 欄位用於 Inspector，代碼中可能不直接使用
+dotnet_diagnostic.CS0414.severity = none
+
+# ===== 建議保留的警告 =====
+
+# IDE0005: 移除不必要的 using
+# 原因: 有助於保持代碼整潔
+dotnet_diagnostic.IDE0005.severity = warning
+
+# IDE0052: 未讀取的私有成員
+# 原因: 可能是真正的死代碼，建議檢查
+dotnet_diagnostic.IDE0052.severity = suggestion
+
+# CS0168: 變數已宣告但從未使用
+# 原因: 通常是代碼錯誤
+dotnet_diagnostic.CS0168.severity = warning
+
+# ===== Unity 友好的命名規則 =====
+
+# 私有欄位使用下劃線前綴（Unity 風格）
+dotnet_naming_rule.unity_private_fields.severity = suggestion
+dotnet_naming_rule.unity_private_fields.symbols = unity_private_fields
+dotnet_naming_rule.unity_private_fields.style = unity_private_field_style
+
+dotnet_naming_symbols.unity_private_fields.applicable_kinds = field
+dotnet_naming_symbols.unity_private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.unity_private_field_style.capitalization = camel_case
+dotnet_naming_style.unity_private_field_style.required_prefix = _
+
+# [SerializeField] 私有欄位也使用下劃線
+dotnet_naming_rule.serialized_fields.severity = suggestion
+dotnet_naming_rule.serialized_fields.symbols = serialized_fields
+dotnet_naming_rule.serialized_fields.style = unity_private_field_style
+
+dotnet_naming_symbols.serialized_fields.applicable_kinds = field
+dotnet_naming_symbols.serialized_fields.applicable_accessibilities = private

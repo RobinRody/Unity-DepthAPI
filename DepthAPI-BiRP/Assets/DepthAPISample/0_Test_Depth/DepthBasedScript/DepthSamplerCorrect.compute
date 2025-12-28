@@ -1,0 +1,98 @@
+﻿#pragma kernel SampleDepthPoints
+
+// Global variables set by EnvironmentDepthManager
+// No need to pass from C#
+Texture2DArray<float> _EnvironmentDepthTexture;
+SamplerState sampler_EnvironmentDepthTexture;
+float4x4 _EnvironmentDepthReprojectionMatrices[2];
+float4 _EnvironmentDepthZBufferParams;
+
+// Parameters passed from C#
+float3 _CameraPosition;
+float3 _CameraForward;
+float3 _CameraRight;
+float3 _CameraUp;
+float _TanHalfFOV;
+float _AspectRatio;
+
+// Output structure
+struct DepthSampleResult
+{
+    float3 worldPosition;
+    float depth;
+    float isValid;
+};
+
+RWStructuredBuffer<DepthSampleResult> _ResultBuffer;
+RWStructuredBuffer<float2> _InputUVs;
+
+// Sample environment depth and convert to linear depth
+float SampleEnvironmentDepthLinear(float2 uv, uint eyeIndex)
+{
+    float inputDepthEye = _EnvironmentDepthTexture.SampleLevel(sampler_EnvironmentDepthTexture, float3(uv, (float) eyeIndex), 0).r;
+    float inputDepthNdc = inputDepthEye * 2.0 - 1.0;
+    
+    if (inputDepthNdc >= 1.0f)
+    {
+        return 10000.0; // Invalid depth
+    }
+    
+    float linearDepth = (1.0 / (inputDepthNdc + _EnvironmentDepthZBufferParams.y)) * _EnvironmentDepthZBufferParams.x;
+    return linearDepth;
+}
+
+[numthreads(64, 1, 1)]
+void SampleDepthPoints(uint3 id : SV_DispatchThreadID)
+{
+    // Initialize result as invalid
+    _ResultBuffer[id.x].worldPosition = float3(0, 0, 0);
+    _ResultBuffer[id.x].depth = -1.0;
+    _ResultBuffer[id.x].isValid = 0.0;
+    
+    // Read screen UV from input buffer
+    float2 screenUV = _InputUVs[id.x];
+    
+    // Calculate view direction from camera to screen point
+    float2 ndc = screenUV * 2.0 - 1.0;
+    ndc.y *= -1.0;
+    
+    float3 viewDir = normalize(
+        _CameraForward +
+        ndc.x * _TanHalfFOV * _AspectRatio * _CameraRight +
+        ndc.y * _TanHalfFOV * _CameraUp
+    );
+    
+    // Use left eye (simplified)
+    uint eyeIndex = 0;
+    
+    // Guess an intermediate depth to calculate world position
+    float guessDepth = 1.0;
+    float3 guessWorldPos = _CameraPosition + viewDir * guessDepth;
+    
+    // Reproject to depth texture UV
+    float4 depthSpace = mul(_EnvironmentDepthReprojectionMatrices[eyeIndex], float4(guessWorldPos, 1.0));
+    float2 depthUV = (depthSpace.xy / depthSpace.w + 1.0) * 0.5;
+    
+    // UV boundary check
+    if (any(depthUV < 0.0) || any(depthUV > 1.0))
+    {
+        return;
+    }
+    
+    // Sample real depth
+    float realDepth = SampleEnvironmentDepthLinear(depthUV, eyeIndex);
+    
+    // Check depth validity
+    if (realDepth > 100.0)  // Invalid depth
+    {
+        return;
+    }
+    
+    // Calculate real world position
+    float3 worldPos = _CameraPosition + viewDir * realDepth;
+    
+    // Write valid result
+    _ResultBuffer[id.x].worldPosition = worldPos;
+    _ResultBuffer[id.x].depth = realDepth;
+    _ResultBuffer[id.x].isValid = 1.0;
+}
