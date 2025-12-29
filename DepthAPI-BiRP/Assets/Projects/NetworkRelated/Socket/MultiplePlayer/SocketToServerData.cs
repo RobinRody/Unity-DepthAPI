@@ -116,6 +116,7 @@ namespace MultiPlayer {
         public void UpdateData(Transform headTransform, bool rhValid, bool lhValid, float avatarScale)
         {
             //UpdateBoneTransforms(bones);
+            bone_transforms.Clear();
             bone_transforms.Add(new BoneTransformData(
                 "b_head",
                 headTransform.position,

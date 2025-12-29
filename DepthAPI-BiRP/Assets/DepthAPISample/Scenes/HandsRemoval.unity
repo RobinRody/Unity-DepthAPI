@@ -679,7 +679,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 499622304}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 555725d48e9051a4bb6b8d45178c2fdd, type: 3}
   m_Name: 
@@ -1306,6 +1306,7 @@ MonoBehaviour:
   maxParticles: 20000
   useAsyncReadback: 1
   enableDebugLogs: 1
+  showDetailedDebug: 0
   showGizmos: 0
   pauseParticleEmission: 0
 --- !u!4 &1386318412
