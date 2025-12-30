@@ -1247,7 +1247,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1386318411
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1261,7 +1261,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   depthManager: {fileID: 710365315}
-  depthSamplerShader: {fileID: 7200000, guid: 52d895401cfa419478b6a420770a25c0, type: 3}
+  depthSamplerShader: {fileID: 7200000, guid: 69c9889884acecd4c865f92a5bbae7fa, type: 3}
   minDepth: 0.2
   maxDepth: 5
   cullDistance: 3

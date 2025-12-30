@@ -1,4 +1,4 @@
-using UnityEngine;
+Ôªøusing UnityEngine;
 using Meta.XR.EnvironmentDepth;
 using System.Collections;
 
@@ -43,8 +43,11 @@ public class DepthVisualizationDebugger : MonoBehaviour
     private float lastSampledLinearDepth = 0f;
     
     [Header("HMD Debug Controls")]
-    [SerializeField] private OVRInput.Button debugLogButton = OVRInput.Button.One; // A ∂s
+    [SerializeField] private OVRInput.Button debugLogButton = OVRInput.Button.One; // A Èàï
     [SerializeField] private bool enableHMDDebugControl = true;
+
+    // Track if material was dynamically created
+    private bool materialWasDynamicallyCreated = false;
 
     public enum VisualizationMode
     {
@@ -127,28 +130,38 @@ public class DepthVisualizationDebugger : MonoBehaviour
         debugQuad.transform.localScale = new Vector3(quadSize.x, quadSize.y, 1);
         
         // Destroy collider
-        Destroy(debugQuad.GetComponent<Collider>());
+        var collider = debugQuad.GetComponent<Collider>();
+        if (collider != null)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(collider); // Runtime: Âª∂ÈÅ≤Âà™Èô§,ÂÆâÂÖ®
+            }
+            else
+            {
+                DestroyImmediate(collider); // Editor: Á´ãÂç≥Âà™Èô§,ÂøÖË¶Å
+            }
+        }
         
         quadRenderer = debugQuad.GetComponent<MeshRenderer>();
         
         if (depthVisualizationMaterial != null)
         {
             quadRenderer.material = depthVisualizationMaterial;
+            materialWasDynamicallyCreated = false;
         }
         else
         {
-            // Create default material if none assigned
             Shader shader = Shader.Find("Debug/DepthVisualization");
             if (shader != null)
             {
                 depthVisualizationMaterial = new Material(shader);
                 quadRenderer.material = depthVisualizationMaterial;
+                materialWasDynamicallyCreated = true; // üîß FIX: Mark as dynamically created
             }
         }
         
-        // Position relative to camera
         UpdateQuadPosition();
-        
         debugQuad.SetActive(enableVisualization && showDebugQuad);
     }
     
@@ -208,13 +221,13 @@ public class DepthVisualizationDebugger : MonoBehaviour
             }
         }
         
-        // Log depth info
-        bool shouldLogDepthInfo = Input.GetKeyDown(KeyCode.D);
+        // üîß FIX: Use OVR Input instead of legacy Input
+        bool shouldLogDepthInfo = false;
         
         if (enableHMDDebugControl)
         {
-            // ´ˆ Quest §‚ß‚™∫ A ∂s (•k§‚) ©Œ X ∂s (•™§‚)
-            shouldLogDepthInfo |= OVRInput.GetDown(debugLogButton, OVRInput.Controller.RTouch) ||
+            // A Èàï (Âè≥Êâã) Êàñ X Èàï (Â∑¶Êâã)
+            shouldLogDepthInfo = OVRInput.GetDown(debugLogButton, OVRInput.Controller.RTouch) ||
                                   OVRInput.GetDown(debugLogButton, OVRInput.Controller.LTouch);
         }
         
@@ -380,19 +393,42 @@ public class DepthVisualizationDebugger : MonoBehaviour
     
     private void OnDestroy()
     {
+        // üîß FIX: Safe cleanup - only destroy runtime objects
         if (debugQuad != null)
         {
-            Destroy(debugQuad);
+            if (Application.isPlaying)
+            {
+                Destroy(debugQuad);
+            }
+            else
+            {
+                DestroyImmediate(debugQuad);
+            }
         }
         
         if (gradientTexture != null)
         {
-            Destroy(gradientTexture);
+            if (Application.isPlaying)
+            {
+                Destroy(gradientTexture);
+            }
+            else
+            {
+                DestroyImmediate(gradientTexture);
+            }
         }
         
-        if (depthVisualizationMaterial != null && Application.isPlaying)
+        // üîß FIX: Only destroy material if it was created at runtime
+        if (depthVisualizationMaterial != null && materialWasDynamicallyCreated)
         {
-            Destroy(depthVisualizationMaterial);
+            if (Application.isPlaying)
+            {
+                Destroy(depthVisualizationMaterial);
+            }
+            else
+            {
+                DestroyImmediate(depthVisualizationMaterial);
+            }
         }
     }
     
@@ -433,7 +469,7 @@ public class DepthVisualizationDebugger : MonoBehaviour
         GUILayout.Label("  - Only WHITE? Check shader");
         
         GUILayout.Label("---");
-        GUILayout.Label("Press 'D' to log full debug info");
+        GUILayout.Label("Press A/X button to log debug info");
         GUILayout.EndArea();
     }
 }
