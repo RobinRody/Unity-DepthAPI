@@ -1266,6 +1266,10 @@ MonoBehaviour:
   maxDepth: 5
   cullDistance: 3
   surfaceOffset: 0.002
+  enableHeightFilter: 1
+  heightFilterMode: 0
+  minWorldHeight: 0.2
+  maxWorldHeight: 2.2
   emissionDensity: 0.95
   maxParticlesPerFrame: 800
   samplesPerFrame: 1024
@@ -6229,6 +6233,8 @@ MonoBehaviour:
   rotateWithCamera: 1
   showRawDepthValues: 1
   samplePoint: {x: 0.5, y: 0.5}
+  debugLogButton: 1
+  enableHMDDebugControl: 1
 --- !u!4 &1704960625
 Transform:
   m_ObjectHideFlags: 0

@@ -1,0 +1,112 @@
+﻿#pragma kernel SampleDepthPoints
+
+Texture2DArray<float> _EnvironmentDepthTexture;
+SamplerState sampler_EnvironmentDepthTexture;
+float4x4 _EnvironmentDepthReprojectionMatrices[2];
+float4 _EnvironmentDepthZBufferParams;
+
+// Depth Camera FOV
+float _DepthCameraFovLeft;
+float _DepthCameraFovRight;
+float _DepthCameraFovTop;
+float _DepthCameraFovDown;
+
+// 🆕 Depth Camera Pose (from DepthFrameDesc.createPose)
+float3 _DepthCameraPoseLocation;
+float4 _DepthCameraPoseRotation; // Quaternion (x, y, z, w)
+
+uint _CurrentEyeIndex;
+
+// Unity camera (for debug/validation only)
+float3 _CameraPosition;
+float3 _CameraForward;
+float3 _CameraRight;
+float3 _CameraUp;
+
+float _MinWorldHeight;
+float _MaxWorldHeight;
+
+struct DepthSampleResult
+{
+    float3 worldPosition;
+    float depth;
+    float isValid;
+};
+
+RWStructuredBuffer<DepthSampleResult> _ResultBuffer;
+RWStructuredBuffer<float2> _InputUVs;
+
+float SampleEnvironmentDepthLinear(float2 uv, uint eyeIndex)
+{
+    float inputDepthEye = _EnvironmentDepthTexture.SampleLevel(
+        sampler_EnvironmentDepthTexture,
+        float3(uv, (float) eyeIndex),
+        0
+    ).r;
+    
+    float inputDepthNdc = inputDepthEye * 2.0 - 1.0;
+    
+    if (inputDepthNdc >= 1.0f)
+        return 10000.0;
+    
+    float linearDepth = (1.0 / (inputDepthNdc + _EnvironmentDepthZBufferParams.y)) *
+                        _EnvironmentDepthZBufferParams.x;
+    return linearDepth;
+}
+
+// 🆕 Quaternion rotation function
+float3 RotateVectorByQuaternion(float3 v, float4 q)
+{
+    // q * v * q^-1
+    float3 qVec = float3(q.x, q.y, q.z);
+    float3 t = 2.0 * cross(qVec, v);
+    return v + q.w * t + cross(qVec, t);
+}
+
+[numthreads(64, 1, 1)]
+void SampleDepthPoints(uint3 id : SV_DispatchThreadID)
+{
+    _ResultBuffer[id.x].worldPosition = float3(0, 0, 0);
+    _ResultBuffer[id.x].depth = -1.0;
+    _ResultBuffer[id.x].isValid = 0.0;
+    
+    float2 inputUV = _InputUVs[id.x];
+    uint eyeIndex = _CurrentEyeIndex;
+    float2 depthUV = inputUV;
+    
+    float linearDepth = SampleEnvironmentDepthLinear(depthUV, eyeIndex);
+    
+    if (linearDepth > 100.0)
+    {
+        return;
+    }
+    
+    // ===== 🆕 CORRECT METHOD: Use Depth Camera Pose =====
+    
+    // Step 1: Calculate view direction in depth camera's local space
+    float tanX = lerp(-_DepthCameraFovLeft, _DepthCameraFovRight, depthUV.x);
+    float tanY = lerp(-_DepthCameraFovDown, _DepthCameraFovTop, depthUV.y);
+    
+    // Normalized direction in depth camera local space
+    float3 depthCameraLocalDir = normalize(float3(tanX, tanY, 1.0));
+    
+    // Step 2: Scale by depth to get position in depth camera local space
+    float3 depthCameraLocalPos = depthCameraLocalDir * linearDepth;
+    
+    // Step 3: Transform from depth camera local space to world space
+    // World = DepthCameraPose.Location + DepthCameraPose.Rotation * LocalPos
+    float3 depthCameraWorldDir = RotateVectorByQuaternion(depthCameraLocalPos, _DepthCameraPoseRotation);
+    float3 worldPos = _DepthCameraPoseLocation + depthCameraWorldDir;
+    
+    // Height filtering
+    if (worldPos.y < _MinWorldHeight || worldPos.y > _MaxWorldHeight)
+    {
+        _ResultBuffer[id.x].isValid = 0.0;
+        return;
+    }
+    
+    // Output result
+    _ResultBuffer[id.x].worldPosition = worldPos;
+    _ResultBuffer[id.x].depth = linearDepth;
+    _ResultBuffer[id.x].isValid = 1.0;
+}

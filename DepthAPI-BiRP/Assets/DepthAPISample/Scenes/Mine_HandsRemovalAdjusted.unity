@@ -141,7 +141,7 @@ PrefabInstance:
     - target: {fileID: 5298101063742614705, guid: 5ed02d0b50196e44dae27a4023424f71,
         type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5989658020351491817, guid: 5ed02d0b50196e44dae27a4023424f71,
         type: 3}
@@ -1655,11 +1655,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   depthManager: {fileID: 710365315}
-  depthSamplerShader: {fileID: 7200000, guid: 52d895401cfa419478b6a420770a25c0, type: 3}
+  depthSamplerShader: {fileID: 7200000, guid: 69c9889884acecd4c865f92a5bbae7fa, type: 3}
   minDepth: 0.2
-  maxDepth: 3
-  cullDistance: 2
+  maxDepth: 2
+  cullDistance: 1.5
   surfaceOffset: 0.002
+  enableHeightFilter: 1
+  heightFilterMode: 0
+  minWorldHeight: 0.2
+  maxWorldHeight: 2.2
   emissionDensity: 0.95
   maxParticlesPerFrame: 600
   samplesPerFrame: 1024
@@ -6615,7 +6619,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   depthManager: {fileID: 710365315}
-  depthVisualizationMaterial: {fileID: 2100000, guid: bab3ae8d5ab8dae4cbb137c0cdcff000,
+  depthVisualizationMaterial: {fileID: 2100000, guid: d4f5d0bf5deff624db60f104f58072bb,
     type: 2}
   enableVisualization: 1
   visualizationMode: 2
@@ -6659,6 +6663,8 @@ MonoBehaviour:
   rotateWithCamera: 1
   showRawDepthValues: 1
   samplePoint: {x: 0.5, y: 0.5}
+  debugLogButton: 1
+  enableHMDDebugControl: 1
 --- !u!4 &1704960625
 Transform:
   m_ObjectHideFlags: 0
@@ -30131,7 +30137,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &4871189340374294455
 RectTransform:
   m_ObjectHideFlags: 0

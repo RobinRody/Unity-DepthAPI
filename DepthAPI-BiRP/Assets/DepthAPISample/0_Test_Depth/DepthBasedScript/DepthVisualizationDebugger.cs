@@ -42,6 +42,10 @@ public class DepthVisualizationDebugger : MonoBehaviour
     private float lastSampledRawDepth = 0f;
     private float lastSampledLinearDepth = 0f;
     
+    [Header("HMD Debug Controls")]
+    [SerializeField] private OVRInput.Button debugLogButton = OVRInput.Button.One; // A 鈕
+    [SerializeField] private bool enableHMDDebugControl = true;
+
     public enum VisualizationMode
     {
         ColorGradient,      // Near = Red, Far = Blue
@@ -205,7 +209,16 @@ public class DepthVisualizationDebugger : MonoBehaviour
         }
         
         // Log depth info
-        if (Input.GetKeyDown(KeyCode.D))
+        bool shouldLogDepthInfo = Input.GetKeyDown(KeyCode.D);
+        
+        if (enableHMDDebugControl)
+        {
+            // 按 Quest 手把的 A 鈕 (右手) 或 X 鈕 (左手)
+            shouldLogDepthInfo |= OVRInput.GetDown(debugLogButton, OVRInput.Controller.RTouch) ||
+                                  OVRInput.GetDown(debugLogButton, OVRInput.Controller.LTouch);
+        }
+        
+        if (shouldLogDepthInfo)
         {
             LogDepthInfo();
         }

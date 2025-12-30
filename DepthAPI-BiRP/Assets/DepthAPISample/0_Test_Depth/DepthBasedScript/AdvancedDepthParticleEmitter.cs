@@ -2,8 +2,10 @@
 using Meta.XR.EnvironmentDepth;
 using System.Collections;
 using UnityEngine.Rendering;
+using System.Reflection; // 🆕 新增
 
-[RequireComponent(typeof(ParticleSystem))]
+[RequireComponent(typeof(ParticleSystem))
+]
 public class AdvancedDepthParticleEmitter : MonoBehaviour
 {
     [Header("References")]
@@ -15,7 +17,20 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
     [SerializeField] private float maxDepth = 5.0f;
     [SerializeField] private float cullDistance = 3.0f;
     [SerializeField] private float surfaceOffset = 0.002f;
-    
+
+    [Header("Height Filtering")]
+    [SerializeField] private bool enableHeightFilter = true;
+    [SerializeField] private FilterMode heightFilterMode = FilterMode.ComputeShader; // 🆕
+    [SerializeField] private float minWorldHeight = 0.2f;
+    [SerializeField] private float maxWorldHeight = 2.2f;
+
+    public enum FilterMode
+    {
+        ComputeShader,  // GPU 端過濾(最快)
+        CPUOnly,        // 僅 CPU 過濾(易除錯)
+        Hybrid          // 雙重過濾(最嚴格)
+    }
+
     // Public accessors for depth visualization sync
     public float MinDepth => minDepth;
     public float CullDistance => cullDistance;
@@ -82,6 +97,26 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
     private InitializationStage currentStage = InitializationStage.NotStarted;
     private string failureReason = "";
 
+    // 🆕 反射相關 (完整版本)
+    private static FieldInfo frameDescriptorsField;
+    private static FieldInfo fovLeftField;
+    private static FieldInfo fovRightField;
+    private static FieldInfo fovTopField;
+    private static FieldInfo fovDownField;
+    private static FieldInfo poseLocationField;
+    private static FieldInfo poseRotationField;
+    private static bool reflectionFailed = false;
+
+    // 🆕 深度相機 FOV
+    private float depthCameraFovLeft = 0f;
+    private float depthCameraFovRight = 0f;
+    private float depthCameraFovTop = 0f;
+    private float depthCameraFovDown = 0f;
+
+    // 🆕 新增深度相機姿態欄位
+    private Vector3 depthCameraPoseLocation;
+    private Quaternion depthCameraPoseRotation;
+
     private void Awake()
     {
         LogDebug("=== AWAKE STAGE ===", true);
@@ -137,8 +172,9 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
         InitializeDefaultGradient();
         LogDebug("✓ Particle System configured", true);
         
-        // Stage 4: Compute Shader 初始化
-        LogDebug("Stage 4: Initializing Compute Shader...", true);
+        // Stage 4: Compute Shader 與反射初始化
+        LogDebug("Stage 4: Initializing Compute Shader and Reflection...", true);
+        
         if (depthSamplerShader != null)
         {
             InitializeComputeShader();
@@ -160,6 +196,12 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
             currentStage = InitializationStage.Failed;
             failureReason = "Compute Shader not assigned in Inspector";
             return;
+        }
+        
+        // 🆕 初始化反射
+        if (frameDescriptorsField == null && !reflectionFailed)
+        {
+            InitializeReflection();
         }
         
         cachedResults = new DepthSampleResult[samplesPerFrame];
@@ -377,7 +419,7 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
             return;
         }
 
-        // 🆕 階段性資源檢查
+        // 階段性資源檢查
         var depthTexture = Shader.GetGlobalTexture("_EnvironmentDepthTexture");
         if (depthTexture == null)
         {
@@ -386,6 +428,31 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
                 LogDebug("Depth texture not available", true);
             }
             return;
+        }
+
+        // 🆕 【修正】使用反射安全取得 FOV
+        if (TryGetDepthCameraData(out depthCameraFovLeft, out depthCameraFovRight, 
+                                 out depthCameraFovTop, out depthCameraFovDown,
+                                 out depthCameraPoseLocation, out depthCameraPoseRotation))
+        {
+            if (showDetailedDebug && Time.frameCount % 300 == 0)
+            {
+                LogDebug($"Depth Camera FOV - L:{depthCameraFovLeft:F3} R:{depthCameraFovRight:F3} T:{depthCameraFovTop:F3} D:{depthCameraFovDown:F3}", true);
+                LogDebug($"Depth Camera Pose - Pos:{depthCameraPoseLocation} Rot:{depthCameraPoseRotation.eulerAngles}", true);
+            }
+        }
+        else
+        {
+            // 降級: 使用預設值 (Quest 3 典型 FOV)
+            depthCameraFovLeft = Mathf.Tan(45f * Mathf.Deg2Rad);   // ~0.707
+            depthCameraFovRight = Mathf.Tan(45f * Mathf.Deg2Rad);  // ~0.707
+            depthCameraFovTop = Mathf.Tan(37.5f * Mathf.Deg2Rad);  // ~0.577
+            depthCameraFovDown = Mathf.Tan(37.5f * Mathf.Deg2Rad); // ~0.577
+            
+            if (showDetailedDebug && Time.frameCount % 300 == 0)
+            {
+                LogDebug("⚠ Using fallback depth camera FOV values", true);
+            }
         }
 
         Vector2[] randomUVs = new Vector2[samplesPerFrame];
@@ -405,7 +472,20 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
         var reprojMatrices = Shader.GetGlobalMatrixArray("_EnvironmentDepthReprojectionMatrices");
         if (reprojMatrices != null && reprojMatrices.Length >= 2)
         {
+            // 🆕 【關鍵修正】取得深度拍攝時的 TrackingSpace 變換
+            // Meta 的重投影矩陣已經乘上當前 trackingSpaceWorldToLocal,
+            // 我們需要用「深度拍攝時」的姿態,而非「當前」的姿態
+            
+            // 方法1: 不使用 TrackingSpace 變換 (推薦)
+            Matrix4x4 identityMatrix = Matrix4x4.identity;
+            
             depthSamplerShader.SetMatrixArray("_EnvironmentDepthReprojectionMatrices", reprojMatrices);
+            // ❌ 移除這行: depthSamplerShader.SetMatrix("_TrackingSpaceWorldToLocal", trackingSpaceWorldToLocal);
+            
+            // 方法2: 如果一定要用,需要反向補償
+            // Matrix4x4 currentTrackingSpaceWorldToLocal = GetTrackingSpaceWorldToLocalMatrix();
+            // Matrix4x4 inverseTracking = currentTrackingSpaceWorldToLocal.inverse;
+            // depthSamplerShader.SetMatrix("_InverseTrackingSpaceTransform", inverseTracking);
         }
         else
         {
@@ -415,12 +495,56 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
         var zBufferParams = Shader.GetGlobalVector("_EnvironmentDepthZBufferParams");
         depthSamplerShader.SetVector("_EnvironmentDepthZBufferParams", zBufferParams);
         
+        // 🆕 【關鍵修正2】傳入深度相機 FOV (取代 Unity 相機 FOV)
+        depthSamplerShader.SetFloat("_DepthCameraFovLeft", depthCameraFovLeft);
+        depthSamplerShader.SetFloat("_DepthCameraFovRight", depthCameraFovRight);
+        depthSamplerShader.SetFloat("_DepthCameraFovTop", depthCameraFovTop);
+        depthSamplerShader.SetFloat("_DepthCameraFovDown", depthCameraFovDown);
+        
+        // ❌ 移除錯誤的 Unity 相機 FOV 傳遞
+        // depthSamplerShader.SetFloat("_TanHalfFOV", Mathf.Tan(mainCamera.fieldOfView * 0.5f * Mathf.Deg2Rad));
+        // depthSamplerShader.SetFloat("_AspectRatio", mainCamera.aspect);
+        
+        // 🆕 【關鍵修正3】傳入當前立體眼睛索引
+        // 在單眼模式 (Editor) 或非 VR 模式下預設為 0
+        uint currentEyeIndex = 0;
+        #if UNITY_ANDROID && !UNITY_EDITOR
+        // Quest 裝置上根據當前渲染眼睛決定
+        // 注意: 這是簡化版本,實際可能需要從 XR 系統查詢
+        // 對於粒子發射,通常使用左眼 (0) 即可
+        currentEyeIndex = 0; // 可以擴展為動態查詢
+        #endif
+        
+        depthSamplerShader.SetInt("_CurrentEyeIndex", (int)currentEyeIndex);
+        
+        // 🆕 傳入深度相機姿態
+        depthSamplerShader.SetVector("_DepthCameraPoseLocation", depthCameraPoseLocation);
+        depthSamplerShader.SetVector("_DepthCameraPoseRotation", new Vector4(
+            depthCameraPoseRotation.x,
+            depthCameraPoseRotation.y,
+            depthCameraPoseRotation.z,
+            depthCameraPoseRotation.w
+        ));
+        
+        // 保留相機位置/方向 (用於世界空間轉換)
         depthSamplerShader.SetVector("_CameraPosition", mainCamera.transform.position);
         depthSamplerShader.SetVector("_CameraForward", mainCamera.transform.forward);
         depthSamplerShader.SetVector("_CameraRight", mainCamera.transform.right);
         depthSamplerShader.SetVector("_CameraUp", mainCamera.transform.up);
-        depthSamplerShader.SetFloat("_TanHalfFOV", Mathf.Tan(mainCamera.fieldOfView * 0.5f * Mathf.Deg2Rad));
-        depthSamplerShader.SetFloat("_AspectRatio", mainCamera.aspect);
+        
+        // 設定高度過濾參數
+        if (enableHeightFilter && 
+            (heightFilterMode == FilterMode.ComputeShader || heightFilterMode == FilterMode.Hybrid))
+        {
+            depthSamplerShader.SetFloat("_MinWorldHeight", minWorldHeight);
+            depthSamplerShader.SetFloat("_MaxWorldHeight", maxWorldHeight);
+        }
+        else
+        {
+            // 禁用 GPU 端過濾 (設為極端值)
+            depthSamplerShader.SetFloat("_MinWorldHeight", -1000f);
+            depthSamplerShader.SetFloat("_MaxWorldHeight", 1000f);
+        }
         
         int threadGroups = Mathf.CeilToInt(samplesPerFrame / 64f);
         
@@ -465,6 +589,7 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
     private void ProcessResults()
     {
         int particlesEmitted = 0;
+        int heightFilteredCount = 0; // 🆕 統計
         int validSamplesThisFrame = 0;
         int depthInRangeSamples = 0; // 🆕 追蹤深度範圍內的樣本
         
@@ -476,6 +601,18 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
             {
                 validDepthSamples++;
                 validSamplesThisFrame++;
+                
+                // 🆕 CPU 端過濾 (僅在需要時執行)
+                if (enableHeightFilter && 
+                    (heightFilterMode == FilterMode.CPUOnly || heightFilterMode == FilterMode.Hybrid))
+                {
+                    Vector3 worldPos = cachedResults[i].worldPosition;
+                    if (worldPos.y < minWorldHeight || worldPos.y > maxWorldHeight)
+                    {
+                        heightFilteredCount++;
+                        continue; // 跳過此樣本
+                    }
+                }
                 
                 float envDepth = cachedResults[i].depth;
                 
@@ -520,6 +657,9 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
                 LogDebug("⚠ WARNING: Valid samples found but no particles emitted!", true);
                 LogDebug($"  Check if depth values are in range ({minDepth:F2}m - {cullDistance:F2}m)", true);
             }
+            
+            // 🆕 除錯輸出
+            LogDebug($"Height Filtered: {heightFilteredCount} samples", showDetailedDebug);
             
             lastDebugTime = Time.time;
         }
@@ -636,5 +776,107 @@ public class AdvancedDepthParticleEmitter : MonoBehaviour
         info += $"Active Particles: {(particleSystem != null ? particleSystem.particleCount : 0)}\n";
         info += $"Valid Sample Rate: {(totalSamples > 0 ? (validDepthSamples / (float)totalSamples * 100f).ToString("F1") : "0")}%\n";
         return info;
+    }
+
+    // 🆕 初始化反射以存取 internal 欄位
+    private void InitializeReflection()
+    {
+        try
+        {
+            LogDebug("Initializing reflection for internal fields...", showDetailedDebug);
+            
+            var managerType = typeof(EnvironmentDepthManager);
+            frameDescriptorsField = managerType.GetField("frameDescriptors", 
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            if (frameDescriptorsField == null)
+            {
+                LogError("Reflection failed: frameDescriptors field not found!");
+                reflectionFailed = true;
+                return;
+            }
+            
+            // 取得 DepthFrameDesc 的內部成員
+            var descType = frameDescriptorsField.FieldType.GetElementType();
+            if (descType == null)
+            {
+                LogError("Reflection failed: Cannot determine DepthFrameDesc type!");
+                reflectionFailed = true;
+                return;
+            }
+            
+            fovLeftField = descType.GetField("fovLeftAngleTangent", BindingFlags.NonPublic | BindingFlags.Instance);
+            fovRightField = descType.GetField("fovRightAngleTangent", BindingFlags.NonPublic | BindingFlags.Instance);
+            fovTopField = descType.GetField("fovTopAngleTangent", BindingFlags.NonPublic | BindingFlags.Instance);
+            fovDownField = descType.GetField("fovDownAngleTangent", BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            // 🆕 新增姿態欄位
+            poseLocationField = descType.GetField("createPoseLocation", BindingFlags.NonPublic | BindingFlags.Instance);
+            poseRotationField = descType.GetField("createPoseRotation", BindingFlags.NonPublic | BindingFlags.Instance);
+            
+            if (fovLeftField == null || fovRightField == null || fovTopField == null || fovDownField == null ||
+                poseLocationField == null || poseRotationField == null)
+            {
+                LogError("Reflection failed: DepthFrameDesc fields not found!");
+                reflectionFailed = true;
+                return;
+            }
+            
+            LogDebug("✓ Reflection initialized successfully", true);
+        }
+        catch (System.Exception e)
+        {
+            LogError($"Reflection initialization error: {e.Message}");
+            reflectionFailed = true;
+        }
+    }
+
+    // 🆕 安全取得深度相機 FOV
+    private bool TryGetDepthCameraData(out float left, out float right, out float top, out float down,
+                                   out Vector3 poseLocation, out Quaternion poseRotation)
+    {
+        left = right = top = down = 0f;
+        poseLocation = Vector3.zero;
+        poseRotation = Quaternion.identity;
+        
+        if (reflectionFailed || frameDescriptorsField == null || depthManager == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var frameDescs = frameDescriptorsField.GetValue(depthManager) as System.Array;
+            if (frameDescs == null || frameDescs.Length < 1)
+            {
+                return false;
+            }
+            
+            object leftEyeDesc = frameDescs.GetValue(0);
+            if (leftEyeDesc == null)
+            {
+                return false;
+            }
+
+            // 🆕 使用反射讀取 internal 成員：讀取 FOV
+            left = (float)fovLeftField.GetValue(leftEyeDesc);
+            right = (float)fovRightField.GetValue(leftEyeDesc);
+            top = (float)fovTopField.GetValue(leftEyeDesc);
+            down = (float)fovDownField.GetValue(leftEyeDesc);
+            
+            // 🆕 讀取姿態
+            poseLocation = (Vector3)poseLocationField.GetValue(leftEyeDesc);
+            poseRotation = (Quaternion)poseRotationField.GetValue(leftEyeDesc);
+            
+            return true;
+        }
+        catch (System.Exception e)
+        {
+            if (showDetailedDebug)
+            {
+                LogError($"Failed to get depth camera data: {e.Message}");
+            }
+            return false;
+        }
     }
 }
