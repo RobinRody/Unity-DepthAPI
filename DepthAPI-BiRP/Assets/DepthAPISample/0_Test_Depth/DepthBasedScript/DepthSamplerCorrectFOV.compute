@@ -2,7 +2,6 @@
 
 Texture2DArray<float> _EnvironmentDepthTexture;
 SamplerState sampler_EnvironmentDepthTexture;
-float4x4 _EnvironmentDepthReprojectionMatrices[2];
 float4 _EnvironmentDepthZBufferParams;
 
 // Depth Camera FOV
@@ -11,20 +10,24 @@ float _DepthCameraFovRight;
 float _DepthCameraFovTop;
 float _DepthCameraFovDown;
 
-// 🆕 Depth Camera Pose (from DepthFrameDesc.createPose)
+// Depth Camera Pose (from DepthFrameDesc.createPose)
 float3 _DepthCameraPoseLocation;
 float4 _DepthCameraPoseRotation; // Quaternion (x, y, z, w)
 
 uint _CurrentEyeIndex;
 
-// Unity camera (for debug/validation only)
-float3 _CameraPosition;
-float3 _CameraForward;
-float3 _CameraRight;
-float3 _CameraUp;
+// 🆕 批次處理參數 (支援雙眼分批)
+int _SampleOffset;
+int _SampleCount;
 
 float _MinWorldHeight;
 float _MaxWorldHeight;
+
+// 🆕 深度校正參數
+float _EdgeDepthCorrectionEnabled;
+float _EdgeCorrectionStartRadius;
+float _MaxCorrectionPercentage;
+float _CorrectionCurveExponent;
 
 struct DepthSampleResult
 {
@@ -63,50 +66,95 @@ float3 RotateVectorByQuaternion(float3 v, float4 q)
     return v + q.w * t + cross(qVec, t);
 }
 
+
+// 🆕 啟發式深度校正函數
+float CorrectEdgeDepth(float rawDepth, float2 uv)
+{
+    // 如果未啟用,直接返回原始深度
+    if (_EdgeDepthCorrectionEnabled < 0.5)
+        return rawDepth;
+    
+    // 計算到中心 (0.5, 0.5) 的距離
+    float2 centered = (uv - 0.5) * 2.0; // 轉換到 [-1, 1]
+    float distFromCenter = length(centered); // 0~1.414
+    
+    // 只校正邊緣區域 (distFromCenter > _EdgeCorrectionStartRadius)
+    if (distFromCenter < _EdgeCorrectionStartRadius)
+        return rawDepth;
+    
+    // 計算邊緣因子 (0~1)
+    float edgeRange = 1.414 - _EdgeCorrectionStartRadius; // 最大可能距離 - 起始半徑
+    float edgeFactor = saturate((distFromCenter - _EdgeCorrectionStartRadius) / edgeRange);
+    
+    // 應用指數曲線 (可調整激進程度)
+    edgeFactor = pow(edgeFactor, _CorrectionCurveExponent);
+    
+    // 計算校正係數
+    // Quest 3 邊緣深度通常被低估,所以增加深度值
+    float correctionFactor = 1.0 + edgeFactor * _MaxCorrectionPercentage;
+    
+    return rawDepth * correctionFactor;
+}
+
+
+
+
 [numthreads(64, 1, 1)]
 void SampleDepthPoints(uint3 id : SV_DispatchThreadID)
 {
-    _ResultBuffer[id.x].worldPosition = float3(0, 0, 0);
-    _ResultBuffer[id.x].depth = -1.0;
-    _ResultBuffer[id.x].isValid = 0.0;
+    // 🔧 支援批次處理 (雙眼分開 Dispatch)
+    uint actualIndex = _SampleOffset + id.x;
     
-    float2 inputUV = _InputUVs[id.x];
-    uint eyeIndex = _CurrentEyeIndex;
-    float2 depthUV = inputUV;
-    
-    float linearDepth = SampleEnvironmentDepthLinear(depthUV, eyeIndex);
-    
-    if (linearDepth > 100.0)
+    if (id.x >= (uint)_SampleCount)
     {
         return;
     }
     
-    // ===== 🆕 CORRECT METHOD: Use Depth Camera Pose =====
+    _ResultBuffer[actualIndex].worldPosition = float3(0, 0, 0);
+    _ResultBuffer[actualIndex].depth = -1.0;
+    _ResultBuffer[actualIndex].isValid = 0.0;
     
-    // Step 1: Calculate view direction in depth camera's local space
-    float tanX = lerp(-_DepthCameraFovLeft, _DepthCameraFovRight, depthUV.x);
-    float tanY = lerp(-_DepthCameraFovDown, _DepthCameraFovTop, depthUV.y);
+    float2 inputUV = _InputUVs[actualIndex];
+    uint eyeIndex = _CurrentEyeIndex;
     
-    // Normalized direction in depth camera local space
+    
+    // Step 1: 採樣原始深度
+    float rawDepth = SampleEnvironmentDepthLinear(inputUV, eyeIndex);
+    
+    if (rawDepth > 100.0)
+    {
+        return;
+    }
+    
+    // 🆕 Step 1.5: 啟發式深度校正
+    //float linearDepth = SampleEnvironmentDepthLinear(inputUV, eyeIndex);
+    float linearDepth = CorrectEdgeDepth(rawDepth, inputUV);
+    
+    //if (linearDepth > 100.0)
+    //{
+    //    return;
+    //}
+    
+    // Step 2: UV → Depth Camera Local Space
+    float tanX = lerp(-_DepthCameraFovLeft, _DepthCameraFovRight, inputUV.x);
+    float tanY = lerp(-_DepthCameraFovDown, _DepthCameraFovTop, inputUV.y);
+    
     float3 depthCameraLocalDir = normalize(float3(tanX, tanY, 1.0));
-    
-    // Step 2: Scale by depth to get position in depth camera local space
     float3 depthCameraLocalPos = depthCameraLocalDir * linearDepth;
     
-    // Step 3: Transform from depth camera local space to world space
-    // World = DepthCameraPose.Location + DepthCameraPose.Rotation * LocalPos
+    // Step 3: Local → World (using Pose)
     float3 depthCameraWorldDir = RotateVectorByQuaternion(depthCameraLocalPos, _DepthCameraPoseRotation);
     float3 worldPos = _DepthCameraPoseLocation + depthCameraWorldDir;
     
-    // Height filtering
+    // Step 4: Height filtering
     if (worldPos.y < _MinWorldHeight || worldPos.y > _MaxWorldHeight)
     {
-        _ResultBuffer[id.x].isValid = 0.0;
+        _ResultBuffer[actualIndex].isValid = 0.0;
         return;
     }
     
-    // Output result
-    _ResultBuffer[id.x].worldPosition = worldPos;
-    _ResultBuffer[id.x].depth = linearDepth;
-    _ResultBuffer[id.x].isValid = 1.0;
+    // Step 5: Store Result
+    _ResultBuffer[actualIndex].worldPosition = worldPos;
+    _ResultBuffer[actualIndex].depth = linearDepth;
+    _ResultBuffer[actualIndex].isValid = 1.0;
 }

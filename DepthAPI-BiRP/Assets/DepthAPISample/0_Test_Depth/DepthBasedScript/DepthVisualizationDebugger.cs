@@ -285,7 +285,7 @@ public class DepthVisualizationDebugger : MonoBehaviour
         
         // Sync depth range from particle emitter
         nearPlane = particleEmitter.MinDepth;
-        farPlane = particleEmitter.CullDistance;
+        farPlane = particleEmitter.MaxDepth;
     }
     
     private void UpdateVisualizationMode()
@@ -352,7 +352,7 @@ public class DepthVisualizationDebugger : MonoBehaviour
         
         if (particleEmitter != null)
         {
-            Debug.Log($"Particle Emitter Range: {particleEmitter.MinDepth}m - {particleEmitter.CullDistance}m");
+            Debug.Log($"Particle Emitter Range: {particleEmitter.MinDepth}m - {particleEmitter.MaxDepth}m");
         }
         
         Debug.Log("=== TROUBLESHOOTING ===");
@@ -446,7 +446,7 @@ public class DepthVisualizationDebugger : MonoBehaviour
         if (particleEmitter != null)
         {
             GUILayout.Label($"Found Particle Emitter: YES");
-            GUILayout.Label($"  - Particle Range: {particleEmitter.MinDepth:F2}m - {particleEmitter.CullDistance:F2}m");
+            GUILayout.Label($"  - Particle Range: {particleEmitter.MinDepth:F2}m - {particleEmitter.MaxDepth:F2}m");
             GUILayout.Label($"Auto-Sync: {(autoSyncWithParticleEmitter ? "ON" : "OFF")}");
         }
         else
